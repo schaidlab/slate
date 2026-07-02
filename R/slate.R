@@ -470,9 +470,9 @@ summary.slate <- function(object, ...) {
   cat("\n")
   cat("iter = ", fit$iter, ", ")
   cat("converge = ", fit$converge, "\n")
-  cat("bic = ", fit$bic)
+  cat("bic = ", fit$bic, "\n")
   
-  invisible(fit)
+  invisible(tbl)
 }
 
 #' Fit SLATE models over a tuning-parameter grid
@@ -2351,6 +2351,10 @@ fit_grid_mlm <- function(Y, Zt, nlatent,
 
 
 #' Simulate Small Test Data to Demo slate
+#'
+#' @importFrom stats rnorm
+#' @importFrom stats runif
+#' @importFrom stats rexp
 #' @export
 slate_sim_test_data <- function(){
   
