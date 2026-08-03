@@ -2352,10 +2352,7 @@ fit_grid_mlm <- function(Y, Zt, nlatent,
 
 #' Simulate Small Test Data to Demo slate
 #'
-#' @importFrom stats rnorm
-#' @importFrom stats runif
-#' @importFrom stats rexp
-#' @export
+#' @export 
 slate_sim_test_data <- function(){
   
   moments_x_given_Y <- function(Y, W, psi, Zt){

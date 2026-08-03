@@ -60,13 +60,13 @@ lambda_frac <- exp(seq(log(1),
                        log(.1),
                        length.out = nlambda))
 
-fit_grid1010 <- slate_grid(Y=sim_data$Y, Zt=sim_data$Zt, surv_covar=sim_data$surv_covar,
+fit_grid <- slate_grid(Y=sim_data$Y, Zt=sim_data$Zt, surv_covar=sim_data$surv_covar,
                       surv_time=sim_data$surv_time, 
                       surv_event=sim_data$surv_event,  
                       alpha_grid, lambda_frac, maxiter=50)
 names(fit_grid)
 dim(fit_grid$grid)
-dim(fit_grid1010$grid)
+
 ```
 
 
@@ -75,10 +75,8 @@ dim(fit_grid1010$grid)
 
 ```{r best_fit}
 
-fit_best1020 <- slate_best_fit(fit_grid)
-fit_best1010 <- slate_best_fit(fit_grid1010)
-summary(fit_best1020)
-summary(fit_best1010)
+fit_best <- slate_best_fit(fit_grid)
+summary(fit_best)
 
 ```
 
