@@ -35,7 +35,6 @@
 
 #devtools::document()   # creates man/*.Rd and updates NAMESPACE
 
-
 #devtools::check()      # checks package
 
 ##devtools::check_win_devel()
@@ -44,5 +43,16 @@
 
 ##usethis::use_vignette("getting-started")
 
-#devtools::install()    # installs locally
+###### steps from arsenal ##########
+####################################
+# devtools::install()    # installs locally
+# devtools::check_man()
+# devtools::test()
+# devtools::check()
+# withr::with_libpaths(c("../testinstalls/", .libPaths()), devtools::install(build_vignettes = TRUE, dependencies = FALSE))
+# devtools::build("../slate/")
 
+#### to upload to CRAN
+## Update DESCRIPTION, README.md, NEWS.md, and cran-comments.md
+# devtools::revdep_check()
+# devtools::release()
