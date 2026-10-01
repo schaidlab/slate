@@ -222,7 +222,6 @@ slate <- function(Y, Zt, surv_covar=NULL, surv_time, surv_event,
     W <- fit_W$W
     psi <- fit_W$psi
 
-
     W[is.na(W)] <- 0
     psi[is.na(psi)] <- 1
 
@@ -581,7 +580,6 @@ slate_grid <- function(Y, Zt, surv_covar, surv_time, surv_event,
         }
       }
 
-
       grid[[i,j]] <- slate(Y, Zt, surv_covar, surv_time, surv_event,
                            alpha=alpha, lambda=lambda, tol=tol, eps=eps,maxiter=maxiter,
                            gauss.nnodes=gauss.nnodes, init=init, verbose=verbose)
@@ -656,10 +654,8 @@ update_cox_coef <- function(coef, surv_covar, surv_event, cumhaz_subj, risk_sets
     coef_new <- coef_old + ginv(score_dat$info) %*% score_dat$score
 
     coef_new[is.na(coef_new)] <- 0
-
-
+   
     coef_change <- max(abs(coef_new - coef_old))
-
 
     if(coef_change < tol){
       break
@@ -1622,7 +1618,7 @@ mlm_factor_ccd <- function(Y, Zt, nlatent, init=NULL, alpha, lambda,
     }
     if(is.na(W_change)){
       W[is.na(W)] <- 0
-      cat("iiter W_change is NA\n")
+      cat("iter W_change is NA\n")
     }
 
 
@@ -1959,6 +1955,7 @@ mlm_factor_df <- function(W, psi){
 #' @seealso
 #' \code{\link{mlm_factor_em}}, \code{\link{mlm_factor_lnlike}},
 #' \code{\link[MASS]{ginv}}
+#' @export
 mlm_Ex <- function(Y, Zt, W, psi) {
   ## sum of expected values of X for
   ## factor model for Y = XWZ' + E
@@ -2258,7 +2255,6 @@ expected_cox_score <- function(surv_covar, surv_event, coef, cumhaz_subj, risk_s
 #'   features in columns.
 #' @param Zt Numeric matrix of feature annotations or design covariates,
 #'   corresponding to \eqn{Z^\top} in the latent factor model.
-#' @param nlatent Integer number of latent variables to estimate.
 #' @param alpha_grid Numeric vector of elastic-net mixing parameters.
 #' @param lambda_frac Numeric vector of fractions of the maximum penalty value.
 #' @param tol Numeric convergence tolerance passed to
@@ -2309,12 +2305,13 @@ expected_cox_score <- function(surv_covar, surv_event, coef, cumhaz_subj, risk_s
 #' \code{\link{mlm_factor_em}}
 #'
 #' @export
-fit_grid_mlm <- function(Y, Zt, nlatent,
+fit_grid_mlm <- function(Y, Zt,
                      alpha_grid, lambda_frac, tol=1e-5, eps=1e-6, maxiter=20, verbose=FALSE){
 
 
 
-
+  nlatent  <- 1
+  
   nlambda <- length(lambda_frac)
   nalpha <- length(alpha_grid)
 
@@ -2351,8 +2348,7 @@ fit_grid_mlm <- function(Y, Zt, nlatent,
 
 
 #' Simulate Small Test Data to Demo slate
-#'
-#' @export 
+#' @export
 slate_sim_test_data <- function(){
   
   moments_x_given_Y <- function(Y, W, psi, Zt){

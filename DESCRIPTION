@@ -1,7 +1,7 @@
 Package: slate
 Title: Sparse Latent factor model for Annotated omics and Time-to-Event data
-Version: 0.0.1
-Date: 2026-08-03
+Version: 0.0.2
+Date: 2026-09-30
 Authors@R: c( 
     person("Dan", "Schaid", email="schaid@mayo.edu", role = c("aut", "cre")),
     person("Jason", "Sinnwell", role="aut")
@@ -10,6 +10,6 @@ Description: Fits a survival latent factor model for multivariate features (e.g.
 Imports: MASS, statmod, survival, stats
 License: GPL-3
 Encoding: UTF-8
-RoxygenNote: 8.0.0
+RoxygenNote: 7.3.2
 Suggests: knitr, rmarkdown
 VignetteBuilder: knitr
