@@ -1,0 +1,82 @@
+---
+title: "intro-slate"
+author: "Dan Schaid"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{intro-slate}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+# Introduction
+
+This vignette demonstrates how to use the package 'slate'. Very simplified data can be simulated for demonstration using simulation function provided in the package.
+
+```{r setup}
+library(slate)
+```
+
+## Simulate example data
+
+For this example, the data is Y (nxp matrix of features), a covariate for survival, and survival time and event status. A matrix Zt for the design of the p features is included, with indicators for group membership of the features.
+
+```{r simulate}
+set.seed(3302)
+sim_data <- slate_sim_test_data()
+
+str(sim_data)
+```
+
+
+
+## Fit slate model with specifed alpha and lambda penalty parameters
+
+```{r fit_slate} 
+fit <- slate(Y=sim_data$Y, Zt=sim_data$Zt, surv_covar=sim_data$surv_covar,
+            surv_time=sim_data$surv_time, 
+            surv_event=sim_data$surv_event, alpha=.5, lambda=1.2)
+
+summary(fit)
+```
+
+
+## Fit a grid of slate models over alpha and lambda penalty parameters
+
+Note that the range of lambda depends on input data, so we create a vector of
+fractions that govern the lambda used. The maximum lambda forces all W loadings to 0, so we create a vector that begins with the largest lambda and subsequently reduce the lamda
+according to the fraction of the maximum lambda. Alpha grid ranges from 1 to a small value greater than 0.
+
+```{r fit_grid}
+
+alpha_grid <- c((10:1)/10)
+nlambda <- 10
+lambda_frac <- exp(seq(log(1),
+                       log(.1),
+                       length.out = nlambda))
+
+fit_grid <- slate_grid(Y=sim_data$Y, Zt=sim_data$Zt, surv_covar=sim_data$surv_covar,
+                      surv_time=sim_data$surv_time, 
+                      surv_event=sim_data$surv_event,  
+                      alpha_grid, lambda_frac, maxiter=50)
+names(fit_grid)
+dim(fit_grid$grid)
+
+```
+
+## Find best fitting model over grid determined by minimum bic
+
+```{r best_fit}
+
+fit_best <- slate_best_fit(fit_grid)
+summary(fit_best)
+
+```
+
+
