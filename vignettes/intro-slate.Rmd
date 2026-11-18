@@ -1,5 +1,5 @@
 ---
-title: "intro-slate"
+title: "Introdunction to SLATE"
 author: "Dan Schaid"
 output: rmarkdown::html_vignette
 vignette: >
@@ -17,7 +17,8 @@ knitr::opts_chunk$set(
 
 # Introduction
 
-This vignette demonstrates how to use the package 'slate'. Very simplified data can be simulated for demonstration using simulation function provided in the package.
+This vignette demonstrates how to use the package 'slate'. A simplified dataset can
+be simulated for demonstration using simulation function provided in the package.
 
 ```{r setup}
 library(slate)
@@ -25,23 +26,22 @@ library(slate)
 
 ## Simulate example data
 
-For this example, the data is Y (nxp matrix of features), a covariate for survival, and survival time and event status. A matrix Zt for the design of the p features is included, with indicators for group membership of the features.
+For this example, the data is Y (nxp matrix of features), a covariate for survival, and survival time and event status. A matrix Zt for the design of the p features is included, with indicators for group membership of the features as *feature_group*.
+
 
 ```{r simulate}
-set.seed(3302)
-sim_data <- slate_sim_test_data()
+set.seed(1010)
+sim_slate <- slate_sim_data(nsample=50, feature_group=rep(1:10, rep(10,10)))
+str(sim_slate)
 
-str(sim_data)
 ```
-
-
 
 ## Fit slate model with specifed alpha and lambda penalty parameters
 
-```{r fit_slate} 
-fit <- slate(Y=sim_data$Y, Zt=sim_data$Zt, surv_covar=sim_data$surv_covar,
-            surv_time=sim_data$surv_time, 
-            surv_event=sim_data$surv_event, alpha=.5, lambda=1.2)
+```{r, fit_slate} 
+fit <- slate(Y=sim_slate$Y, Zt=sim_slate$Zt, surv_covar=sim_slate$surv_covar,
+            surv_time=sim_slate$surv_time, 
+            surv_event=sim_slate$surv_event, alpha=1, lambda=.4) #alpha=.5, lambda=1.2)
 
 summary(fit)
 ```
@@ -53,26 +53,32 @@ Note that the range of lambda depends on input data, so we create a vector of
 fractions that govern the lambda used. The maximum lambda forces all W loadings to 0, so we create a vector that begins with the largest lambda and subsequently reduce the lamda
 according to the fraction of the maximum lambda. Alpha grid ranges from 1 to a small value greater than 0.
 
-```{r fit_grid}
+```{r, fit_grid}
 
-alpha_grid <- c((10:1)/10)
-nlambda <- 10
+alpha_grid <- c((3:1)/3)
+nlambda <- 3
 lambda_frac <- exp(seq(log(1),
                        log(.1),
                        length.out = nlambda))
 
-fit_grid <- slate_grid(Y=sim_data$Y, Zt=sim_data$Zt, surv_covar=sim_data$surv_covar,
-                      surv_time=sim_data$surv_time, 
-                      surv_event=sim_data$surv_event,  
-                      alpha_grid, lambda_frac, maxiter=50)
+fit_grid <- slate_grid(Y=sim_slate$Y, Zt=sim_slate$Zt, surv_covar=sim_slate$surv_covar,
+                      surv_time=sim_slate$surv_time, 
+                      surv_event=sim_slate$surv_event,  
+                      alpha_grid, lambda_frac, maxiter=35)
 names(fit_grid)
 dim(fit_grid$grid)
 
 ```
 
+Note that if you want to see estimation details, they can be printed with parameter *verbose=TRUE*.
+
+
 ## Find best fitting model over grid determined by minimum bic
 
-```{r best_fit}
+Across the grid of slate fits, the *slate_best_fit* function selects the fitted model
+with the lowest BIC. We select that fitted model and show the summary.
+
+```{r, best_fit}
 
 fit_best <- slate_best_fit(fit_grid)
 summary(fit_best)

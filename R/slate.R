@@ -71,15 +71,25 @@
 #'
 #' @seealso
 #' \code{\link[survival]{coxph}}, \code{\link[survival]{Surv}}
-#'
 #' @export
+#' @examples
+#' set.seed(1010)
+#' ## for example purposes, limit iterations due to time constraints
+#' ## for practical use, set to default of 50 or higher
+#' set.iter <- 3
+#' sim_slate <- slate_sim_data(nsample=50, feature_group=rep(1:10, rep(10,10)))
+#' fit <- slate(Y=sim_slate$Y, Zt=sim_slate$Zt, surv_covar=sim_slate$surv_covar,
+#'          surv_time=sim_slate$surv_time,
+#'          maxiter=set.iter,
+#'          surv_event=sim_slate$surv_event, alpha=.8, lambda=.8)
+#' summary(fit)
+
 slate <- function(Y, Zt, surv_covar=NULL, surv_time, surv_event,
                             alpha, lambda=NULL, tol=1e-5, eps=1e-6, maxiter=50,
                             gauss.nnodes=9, init=NULL, verbose=FALSE){
 
   Call <- match.call()
-  
-  
+    
   
   if(is.null(colnames(Y))){
     colnames(Y) <- paste0("Y", 1:ncol(Y))
@@ -329,113 +339,6 @@ slate <- function(Y, Zt, surv_covar=NULL, surv_time, surv_event,
 }
 
 
-#' Initialize parameters for a SLATE model
-#'
-#' Computes initial values for \code{\link{slate}} by fitting a latent factor
-#' model and then a Cox proportional hazards model using the estimated latent
-#' factor expectations.
-#'
-#' @param Y Numeric matrix of observed features, with subjects in rows and
-#'   features in columns.
-#' @param Zt Design matrix for the multivariate feature matrix. This is transpose of
-#'  Z matrix. The Z matrix is easier to conceptualize as a design matrix with
-#'  rows representing the different features of matrix Y and columns representing
-#'  design elements.
-#' @param surv_time Numeric vector of follow-up or event times.
-#' @param surv_event Numeric vector indicating event status, where
-#'   `1`  denotes an observed event and `0`  denotes censoring.
-#' @param surv_covar Numeric vector or matrix of survival covariates. If a vector
-#'   is supplied, it is converted to a one-column matrix. If surv_covar = NULL,
-#'   it is assumed that there is no survival covariate and creates a vector of 0's,
-#'   which results in cox regression coefficient forced to be 0.
-#' @param iter_max Integer maximum number of EM iterations used by
-#'   \code{mlm_factor_em}. Default is `500`.
-#' @param tol Numeric convergence tolerance passed to \code{mlm_factor_em}.
-#'   Default is `1e-6`.
-#' @param verbose Logical; if `TRUE`, prints progress from the factor-model EM
-#'   algorithm. Default is `FALSE`.
-#'
-#' @return A list of initial values suitable for the `init` argument of
-#' \code{\link{slate}}, with components:
-#' \describe{
-#'   \item{W}{Initial factor loading matrix.}
-#'   \item{psi}{Initial feature-specific residual variances.}
-#'   \item{coef_surv}{Initial Cox coefficients for observed survival covariates.}
-#'   \item{coef_latent}{Initial Cox coefficients for latent factor expectations.}
-#'   \item{risk_sets}{Risk-set information at Cox event times.}
-#'   \item{haz_subj}{Subject-specific baseline hazard values expanded to each subject.}
-#'   \item{cumhaz_subj}{Subject-specific cumulative baseline hazard values expanded to each subject.}
-#'   \item{cox_event_time}{Event times from the initial Cox model fit.}
-#' }
-#'
-#' @details
-#' The function first fits a multivariate latent factor model using
-#' \code{mlm_factor_em}. It then computes expected latent factors with
-#' \code{mlm_Ex} and fits a Cox proportional hazards model:
-#' \deqn{
-#'   h(t) = h_0(t)\exp(\gamma^\top Z + \beta^\top E[X \mid Y]).
-#' }
-#' Risk sets, baseline hazards, and cumulative hazards are extracted from the Cox
-#' model and returned for reuse by \code{\link{slate}}.
-#'
-#' @seealso
-#' \code{\link{slate}}, \code{\link[survival]{coxph}},
-#' \code{\link[survival]{Surv}}
-#'
-#' @export
-slate_init <- function(Y, Zt, surv_time, surv_event, surv_covar=NULL,
-                       iter_max=500, tol=1e-6, verbose=FALSE){
-
-  
-  nlatent <- 1
-  
-  ## current methods use 1/n  for lnlike
-  ## and update for num and denom of W
-  ## may need to damp updates to coeff updates, use CCD for complete updates to W
-  
-  if(is.null(surv_covar)){
-    surv_covar <- rep(0, length(surv_time))
-  }
-
-  if(is.vector(surv_covar)){
-    surv_covar <- matrix(surv_covar, ncol=1)
-  }
-
-
-  ## full factor em takes longer to get init value but reduces number of iterations below
-  fit_factor <- mlm_factor_em(Y,Zt, nlatent=nlatent, iter_max = iter_max, tol=tol, verbose=verbose)
-  fit_Ex <- mlm_Ex(Y, Zt, fit_factor$W, fit_factor$psi)
-  fit_cox <- coxph(Surv(surv_time, surv_event) ~ surv_covar + fit_Ex$Ex)
-
-  cox_detail <- coxph.detail(fit_cox)
-  cox_detail$cum_hazard <- cumsum(cox_detail$hazard)
-  cox_event_time <- cox_detail$time
-
-  risk_sets <-vector("list", length=length(cox_event_time))
-  index_subj <- 1:length(surv_time)
-  for(i in 1:length(cox_event_time)){
-    risk_sets[[i]] <- list(subj= index_subj[surv_time >= cox_event_time[i]],
-                           event= index_subj[surv_time == cox_event_time[i] & surv_event == 1])
-  }
-
-
-  haz_subj <- expand_hazard(cox_detail$hazard, surv_time, cox_event_time)
-  cumhaz_subj <- expand_hazard(cox_detail$cum_hazard, surv_time, cox_event_time)
-  ncovar <- ncol(surv_covar)
-  coef <- fit_cox$coefficients
-  coef[is.na(coef)] <- 0
-
-  coef_surv <- coef[1:ncovar]
-  coef_latent <- coef[(ncovar+1):(ncovar+nlatent)]
-  W <- fit_factor$W
-  psi <- fit_factor$psi
-
-  return(list( W=W, psi=psi, coef_surv=coef_surv, coef_latent=coef_latent,
-               risk_sets=risk_sets, haz_subj=haz_subj, cumhaz_subj = cumhaz_subj,
-               cox_event_time=cox_event_time))
-}
-
-
 #' Summarize a Fitted `slate` Model
 #'
 #' Prints a summary of a fitted `slate` model, including the estimated
@@ -474,123 +377,6 @@ summary.slate <- function(object, ...) {
   invisible(tbl)
 }
 
-#' Fit SLATE models over a tuning-parameter grid
-#'
-#' Fits \code{\link{slate}} models over a two-dimensional grid of elastic-net
-#' mixing parameters and penalty strengths.
-#'
-#' @param Y Numeric matrix of observed features, with subjects in rows and
-#'   features in columns.
-#' @param Zt Design matrix for the multivariate feature matrix. This is transpose of
-#'  Z matrix. The Z matrix is easier to conceptualize as a design matrix with
-#'  rows representing the different features of matrix Y and columns representing
-#'  design elements.
-#' @param surv_covar Numeric vector or matrix of survival covariates. If a vector
-#'   is supplied, it is converted to a one-column matrix. If surv_covar = NULL,
-#'   it is assumed that there is no survival covariate and creates a vector of 0's,
-#'   which results in cox regression coefficient forced to be 0.
-#' @param surv_time Numeric vector of follow-up or event times.
-#' @param surv_event Numeric  vector indicating event status, where
-#'   `1` denotes an observed event and `0` denotes censoring.
-#' @param alpha_grid Numeric vector of elastic-net mixing parameters.
-#' @param lambda_frac Numeric vector of fractions of the maximum penalty value.
-#' @param tol Numeric convergence tolerance passed to \code{\link{slate}}.
-#'   Default is `1e-5`.
-#' @param eps Numeric threshold for treating values as zero. Default is `1e-6`.
-#' @param maxiter Integer maximum number of iterations passed to
-#'   \code{\link{slate}}. Default is `20`.
-#' @param gauss.nnodes Integer number of Gauss-Hermite quadrature nodes passed to
-#'   \code{\link{slate}}. Default is `9`.
-#' @param verbose Logical; if `TRUE`, prints progress from individual
-#'   \code{\link{slate}} fits. Default is `FALSE`.
-#'
-#' @return A list with components:
-#' \describe{
-#'   \item{grid}{A matrix of fitted \code{"slate"} objects, with rows
-#'     corresponding to `alpha_grid` and columns corresponding to `lambda_frac`.}
-#'   \item{alpha}{The input vector `alpha_grid`.}
-#'   \item{lambda_frac}{The input vector `lambda_frac`.}
-#' }
-#'
-#' @details
-#' The maximum penalty value is computed using \code{compute_max_XYZ}. For each
-#' value of `alpha_grid`, the penalty value is calculated as
-#' \deqn{
-#'   \lambda = \texttt{lambda\_frac} \times
-#'   \frac{\texttt{max\_XYZ}}{\alpha}.
-#' }
-#'
-#' Initial values are computed once using \code{\link{slate_init}} and reused for
-#' each grid fit. Each fitted model is obtained by calling \code{\link{slate}}.
-#'
-#' @note
-#' Values of `alpha_grid` should be strictly positive, since the maximum penalty
-#' is computed as `max_XYZ / alpha`.
-#'
-#' @seealso
-#' \code{\link{slate}}, \code{\link{slate_init}}
-#'
-#' @export
-slate_grid <- function(Y, Zt, surv_covar, surv_time, surv_event,
-                       alpha_grid, lambda_frac, tol=1e-5, eps=1e-6, maxiter=20,
-                       gauss.nnodes=9, verbose=FALSE){
-
-  nlatent <- 1
-  
-  ## current methods use 1/n  for lnlike
-  ## and update for num and denom of W
-  ## may need to damp updates to coeff updates, use CCD for complete updates to W
-  
-  if(is.null(surv_covar)){
-    surv_covar <- rep(0, length(surv_time))
-  }
-  if(is.vector(surv_covar)){
-    surv_covar <- matrix(surv_covar, ncol=1)
-  }
-
-  nlambda <- length(lambda_frac)
-  nalpha <- length(alpha_grid)
-
-  ## note 2-dimensional grid of fits. Each fit is a list
-  ## and all fits arranged as matrix (of lists)
-  grid <- matrix(list(), nrow=nalpha, ncol=nlambda)
-
-
-  max_XYZ <- compute_max_XYZ(Y, Zt, nlatent=1)
-  cat("Computing initial values\n")
-  init <- slate_init(Y, Zt, surv_time, surv_event, surv_covar, iter_max=500, tol=1e-6, verbose=FALSE)
-
-
-  for(i in 1:nalpha){
-    alpha <- alpha_grid[i]
-    max_lambda <- max_XYZ/alpha
-
-    for(j in 1:nlambda){
-
-      lambda <- lambda_frac[j]*max_lambda
-
-      cat("================ alpha = ", alpha, ", lambda.frac = ", lambda_frac[j], ", lambda = ", lambda, " ==================\n")
-      if(FALSE){
-        if(i==1 & j==1){
-          init <- NULL
-        } else if (i > 1 & j == 1){
-          init <- grid[[i-1,j]]
-        } else {
-          init <- grid[[i,j-1]]
-        }
-      }
-
-      grid[[i,j]] <- slate(Y, Zt, surv_covar, surv_time, surv_event,
-                           alpha=alpha, lambda=lambda, tol=tol, eps=eps,maxiter=maxiter,
-                           gauss.nnodes=gauss.nnodes, init=init, verbose=verbose)
-
-    }
-
-  }
-
-
-  return(list(grid=grid, alpha = alpha_grid, lambda_frac=lambda_frac))
-}
 
 
 #' Update Cox regression coefficients for the SLATE model
@@ -642,6 +428,7 @@ slate_grid <- function(Y, Zt, surv_covar, surv_time, surv_event,
 #'
 #' @seealso
 #' \code{\link{expected_cox_score}}, \code{\link[MASS]{ginv}}
+#' @export
 update_cox_coef <- function(coef, surv_covar, surv_event, cumhaz_subj, risk_sets,
                             Y, W, psi, Zt, ex.dat, gh.dat, tol){
  coef[is.na(coef)] <- 0
@@ -696,6 +483,7 @@ update_cox_coef <- function(coef, surv_covar, surv_event, cumhaz_subj, risk_sets
 #'
 #' This is commonly used to map baseline hazard or cumulative hazard estimates
 #' from Cox-model event times to all study subjects.
+#' @export
 expand_hazard <- function(hazard, surv_time, event_time){
   ord <- order(surv_time)
   haz2 <- hazard[match(surv_time, event_time)]
@@ -740,6 +528,7 @@ expand_hazard <- function(hazard, surv_time, event_time){
 #'
 #' @seealso
 #' \code{\link{expand_hazard}}, \code{\link{expected_func_x}}
+#' @export
 update_hazard <- function(surv_covar, coef_surv, Exb, risk_sets){
 
   rrisk_adj <- exp(surv_covar %*% coef_surv);
@@ -795,6 +584,7 @@ update_hazard <- function(surv_covar, coef_surv, Exb, risk_sets){
 #' @seealso
 #' \code{\link{slate_grid}}, \code{\link{mlm_mle_pca}},
 #' \code{\link{mlm_Ex}}
+#' @export
 compute_max_XYZ <- function(Y, Zt,  nlatent){
   fit_pca <- mlm_mle_pca(Y,Zt, nlatent)
   W <- fit_pca$W
@@ -868,6 +658,8 @@ compute_max_XYZ <- function(Y, Zt,  nlatent){
 #' @seealso
 #' \code{\link{slate}}, \code{\link{gauss_hermite_quad}},
 #' \code{\link{expected_cox_score}}
+#' 
+#' @export
 expected_func_x <- function(Y, W, psi, Zt, surv_cov, coef_surv,coef_latent,
                             surv_event, cumhaz_subj, gh.dat){
   node <- gh.dat$node
@@ -1242,6 +1034,8 @@ mlm_mle_pca <- function(Y,Zt, nlatent){
 #' @seealso
 #' \code{\link{mlm_factor_em}}, \code{\link{mlm_Ex}},
 #' \code{\link[MASS]{ginv}}
+#'
+#' @export
 mlm_factor_lnlike <- function(Y, Zt, W, psi){
   W[is.na(W)] <- 0
   psi[is.na(psi)] <- 1
@@ -1340,6 +1134,8 @@ mlm_factor_lnlike <- function(Y, Zt, W, psi){
 #' @seealso
 #' \code{\link{mlm_factor_em}}, \code{\link{update_W}},
 #' \code{\link{trace_mat}}
+#' 
+#' @export
 mlm_factor_penfunc <- function(Y, Zt, W, psi, Ex, Exx_sum, alpha, lambda){
   ## elastic net penalized neg expected lnlike for
   ## factor model for Y = XWZ' + E
@@ -1422,6 +1218,8 @@ mlm_factor_penfunc <- function(Y, Zt, W, psi, Ex, Exx_sum, alpha, lambda){
 #' @seealso
 #' \code{\link{mlm_factor_penfunc}}, \code{\link{mlm_factor_em}},
 #' \code{\link{trace_mat}}
+#' 
+#' @export
 mlm_factor_loss <- function(Y, Zt, W, psi, Ex, Exx_sum, alpha, lambda){
   ## elastic net penalized neg expected lnlike for
   ## factor model for Y = XWZ' + E
@@ -1686,6 +1484,8 @@ mlm_factor_ccd <- function(Y, Zt, nlatent, init=NULL, alpha, lambda,
 #' @seealso
 #' \code{\link{soft}}, \code{\link{mlm_factor_loss}},
 #' \code{\link{mlm_factor_penfunc}}
+#'
+#' @export
 update_W <- function(Y, Zt, W, psi, Ex, Exx_sum, alpha, lambda, maxiter = 100, tol = 1e-5) {
 
   ## elastic net penalized neg expected lnlike for
@@ -1739,12 +1539,10 @@ update_W <- function(Y, Zt, W, psi, Ex, Exx_sum, alpha, lambda, maxiter = 100, t
       }
     }
 
-
     ## update psi (note use Y and Z,not Ys or Zs)
     WZ <- W %*% Zt
     RR <- t(Y) %*% Y - 2*t(Y) %*% Ex %*% WZ + t(WZ) %*% Exx_sum %*% WZ
     psi <- diag(RR)/n
-
 
     ## update loss
 
@@ -1841,6 +1639,8 @@ soft <- function(x, gamma){
 #'
 #' @seealso
 #' \code{\link[base]{diag}}, \code{\link[base]{sum}}
+#'
+#' @export
 trace_mat <- function(M){
   return(sum(diag(M)))
 }
@@ -1892,6 +1692,8 @@ trace_mat <- function(M){
 #'
 #' @seealso
 #' \code{\link{mlm_factor_ccd}}, \code{\link{slate}}
+#'
+#' @export
 mlm_factor_df <- function(W, psi){
 
   ## since XWZt is invariant under transformations
@@ -2027,6 +1829,8 @@ mlm_Ex <- function(Y, Zt, W, psi) {
 #'
 #' @seealso
 #' \code{\link[statmod]{gauss.quad}}, \code{\link{expected_func_x}}
+#'
+#' @export
 gauss_hermite_quad <- function(dim, nnodes){
   ## create grid of Gauss Hermite quad points for
   ## multivariate integration of dimension dim
@@ -2104,6 +1908,8 @@ gauss_hermite_quad <- function(dim, nnodes){
 #' @seealso
 #' \code{\link{update_cox_coef}}, \code{\link{expected_func_x}},
 #' \code{\link{gauss_hermite_quad}}, \code{\link[MASS]{ginv}}
+#'
+#' @export
 expected_cox_score <- function(surv_covar, surv_event, coef, cumhaz_subj, risk_sets,
                                Y, W, psi, Zt, ex.dat, gh.dat){
   ncov <- ncol(surv_covar)
@@ -2244,228 +2050,4 @@ expected_cox_score <- function(surv_covar, surv_event, coef, cumhaz_subj, risk_s
   return(list(score=score, info=info, info_louis=info_louis,
               var_score=var_score))
 }
-
-
-#' Fit penalized latent factor models over a tuning grid
-#'
-#' Fits a collection of penalized latent factor models over a two-dimensional
-#' grid of elastic-net mixing parameters and penalty strengths.
-#'
-#' @param Y Numeric matrix of observed features, with subjects in rows and
-#'   features in columns.
-#' @param Zt Numeric matrix of feature annotations or design covariates,
-#'   corresponding to \eqn{Z^\top} in the latent factor model.
-#' @param alpha_grid Numeric vector of elastic-net mixing parameters.
-#' @param lambda_frac Numeric vector of fractions of the maximum penalty value.
-#' @param tol Numeric convergence tolerance passed to
-#'   \code{\link{mlm_factor_ccd}}. Default is `1e-5`.
-#' @param eps Numeric threshold for treating values as effectively zero.
-#'   Included for interface consistency. Default is `1e-6`.
-#' @param maxiter Integer maximum number of iterations passed to
-#'   \code{\link{mlm_factor_ccd}}. Default is `20`.
-#' @param verbose Logical; if `TRUE`, prints progress information from model
-#'   fitting routines. Default is `FALSE`.
-#'
-#' @return A list with components:
-#' \describe{
-#'   \item{grid}{A matrix of fitted latent factor model objects returned by
-#'     \code{\link{mlm_factor_ccd}}. Rows correspond to `alpha_grid` and columns
-#'     correspond to `lambda_frac`.}
-#'   \item{alpha}{The input vector `alpha_grid`.}
-#'   \item{lambda_frac}{The input vector `lambda_frac`.}
-#' }
-#'
-#' @details
-#' The function first computes the maximum penalty scaling value using
-#' \code{\link{compute_max_XYZ}} and obtains initial parameter estimates using
-#' \code{\link{mlm_factor_em}}.
-#'
-#' For each value of `alpha_grid`, the maximum penalty parameter is computed as:
-#' \deqn{
-#'   \lambda_{\max} =
-#'   \frac{\texttt{max\_XYZ}}{\alpha}.
-#' }
-#'
-#' The actual penalty used for each fit is:
-#' \deqn{
-#'   \lambda =
-#'   \texttt{lambda\_frac} \times \lambda_{\max}.
-#' }
-#'
-#' Each model is then fit using
-#' \code{\link{mlm_factor_ccd}} with the corresponding `alpha` and `lambda`
-#' values.
-#'
-#' @note
-#' Values in `alpha_grid` should be strictly positive, since the maximum penalty
-#' is computed as `max_XYZ / alpha`.
-#'
-#' @seealso
-#' \code{\link{mlm_factor_ccd}}, \code{\link{compute_max_XYZ}},
-#' \code{\link{mlm_factor_em}}
-#'
-#' @export
-fit_grid_mlm <- function(Y, Zt,
-                     alpha_grid, lambda_frac, tol=1e-5, eps=1e-6, maxiter=20, verbose=FALSE){
-
-
-
-  nlatent  <- 1
-  
-  nlambda <- length(lambda_frac)
-  nalpha <- length(alpha_grid)
-
-  ## note 2-dimensional grid of fits. Each fit is a list
-  ## and all fits arranged as matrix (of lists)
-  grid <- matrix(list(), nrow=nalpha, ncol=nlambda)
-
-
-  max_XYZ <- compute_max_XYZ(Y, Zt, nlatent=1)
-  cat("Computing initial values\n")
-  init <- mlm_factor_em(Y, Zt, nlatent)
-
-
-  for(i in 1:nalpha){
-    alpha <- alpha_grid[i]
-    max_lambda <- max_XYZ/alpha
-
-    for(j in 1:nlambda){
-
-      lambda <- lambda_frac[j]*max_lambda
-
-
-      cat("================ alpha = ", alpha, ", lambda.frac = ", lambda_frac[j], ", lambda = ", lambda, " ==================\n")
-
-      grid[[i,j]] <-  mlm_factor_ccd(Y, Zt, nlatent, init=init, alpha, lambda,
-                                     maxiter = 500, tol = 1e-5, verbose = FALSE)
-    }
-
-  }
-
-
-  return(list(grid=grid, alpha = alpha_grid, lambda_frac=lambda_frac))
-}
-
-
-#' Simulate Small Test Data to Demo slate
-#' @export
-slate_sim_test_data <- function(){
-  
-  moments_x_given_Y <- function(Y, W, psi, Zt){
-    ## conditional moments of X given Y
-    
-    nlat <- nrow(W)
-    imat <- diag(nlat)
-    psi_inv = diag(1.0 / psi)
-    WZt <- W %*% Zt
-    
-    inv_lowdim <- ginv(imat + WZt %*% psi_inv %*% t(WZt))
-    vinv <-  psi_inv - psi_inv %*% t(WZt) %*% inv_lowdim %*% WZt %*% psi_inv
-    
-    Ex <-   Y %*% t(WZt %*% vinv)
-    var_x_y <-  imat - WZt %*% vinv %*% t(WZt)
-    dim(var_x_y) <- NULL
-    
-    Ex[is.na(Ex)] <- 0
-    
-    
-    return(list(mu = Ex, var=var_x_y ))
-  }
-  
-  
-  n <- 25
-  p <- 100
-  Y <- matrix(rnorm(n*p), nrow=n)
-  z_index <- rep(1:10, rep(10,10))
-  Z <- matrix(0, nrow=p, ncol=10)
-  Z <- 1*(col(Z) == z_index)
-  Zt <- t(Z)
-  surv_covar <- sample(c(0,1), n,replace=TRUE)
-  lambda <- 0.1        # baseline hazard
-  
-  beta_surv <- 1
-  nlatent <- 1
-  W <- matrix(0, nrow=nlatent, ncol=nrow(Zt))
-  psi <- rep(1, ncol(Y))
-  W[1,1] <-  1
-  psi[1] <- .9
-  mom <- moments_x_given_Y(Y, W, psi, Zt)
-  x_sim <- mom$mu + sqrt(mom$var) * rnorm(n)
-  
-  beta_latent <- .5
-  
-  # Event times from exponential baseline hazard
-  u <- runif(n)
-  eta <- surv_covar * beta_surv  + x_sim*beta_latent
-  T <- -log(u) / (lambda * exp(eta))
-  C <- rexp(n, rate = 0.05)
-  
-  surv_time <- pmin(T, C)
-  surv_event <- as.integer(T <= C)
-  
-  
-  
-  if(is.null(colnames(Y))){
-    colnames(Y) <- paste0("Y", 1:ncol(Y))
-  }
-  
-  if(is.null(rownames(Zt))){
-    rownames(Zt) <- paste0("Zt", 1:nrow(Zt))
-  }
-  
-  return(list(Y=Y, Zt=Zt, surv_covar=surv_covar, surv_time=surv_time, surv_event=surv_event))
-}
-
-
-#' Select the Best Model from a SLATE Fit Grid
-#'
-#' Selects the model with the smallest Bayesian Information Criterion (BIC)
-#' from a grid of fitted SLATE models. If multiple models have the same minimum
-#' BIC, the model corresponding to the largest lambda penalty (i.e., the
-#' largest column index) is returned.
-#'
-#' @param fit_grid A fitted SLATE grid object containing a component
-#'   \code{grid}, where each element is a fitted model with a numeric
-#'   \code{bic} value.
-#'
-#' @return A fitted SLATE model corresponding to the minimum BIC in the grid.
-#'
-#' @details
-#' The function extracts the BIC from each model in the grid, identifies the
-#' minimum BIC while ignoring missing values, and returns the corresponding
-#' fitted model. When multiple models share the same minimum BIC, the tie is
-#' broken by selecting the model with the largest lambda penalty, assumed to
-#' correspond to the largest column index of the grid.
-#'
-#' @examples
-#' \dontrun{
-#' fit_grid <- slate_fit_grid(...)
-#' best_fit <- slate_best_fit(fit_grid)
-#' }
-#'
-#' @export
-slate_best_fit <- function(fit_grid){
-  nr <- nrow(fit_grid$grid)
-  nc <- ncol(fit_grid$grid)
-  bic <- matrix(0,nr,nc)  
-  
-  for(i in 1:nr){
-    for(j in 1:nc){
-      bic[i,j] <- fit_grid$grid[[i,j]]$bic
-    }
-  }
-  
-  
-  min_val <- min(bic, na.rm = TRUE)
-  index <- which(!is.na(bic) & bic == min_val, arr.ind = TRUE)
-  ## if ties,choose index that has largest lambda penalty
-  index_row  <- which(index[,2] ==  max(index[,2]), arr.ind = TRUE)[1]
-  index <- index[index_row,]
-  r <- index[1]
-  c <- index[2]
-  
-  fit_best <- fit_grid$grid[[r,c]]
-  return(fit_best)
-}
-
 

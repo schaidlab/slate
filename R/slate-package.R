@@ -11,7 +11,7 @@
 #'
 #' \code{\link{slate}}: 
 #'
-#' \code{\link{slate_sim_test_data}}: simulate test data
+#' \code{\link{slate_sim_data}}: simulate test data
 #'
 #' \code{\link{slate_grid}}:
 #' 
